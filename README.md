@@ -6,12 +6,12 @@ FETC case number: 22-1804.
 
 All scripts were run with R version 4.1.1.
 
-
 This archive is divided into two parts: 
 
 1. An archive for the introduced sensRICLPM package (which is also available in its own repository here https://github.com/linakramerr/sensRICLPM).
 2. An archive for the simulation study.
-3. 
+
+
 ---
 
 | Files/Folders          | Description   |
