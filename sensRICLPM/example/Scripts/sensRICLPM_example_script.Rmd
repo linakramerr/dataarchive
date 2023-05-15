@@ -1,0 +1,217 @@
+---
+title: "sensRICLPM_example"
+author: "Lina Kramer"
+date: "4/26/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(magrittr)
+library(purrr)
+library(lavaan)
+library(tidyr)
+library(dplyr)
+
+
+library(sensRICLPM)
+
+set.seed(155)
+```
+
+# sensRICLPM sensitivity analysis example
+
+
+## Simulate data according to Mulder (2022)
+
+**3 waves of data (stationary & symmetric): defining population parameters:**
+
+*Autoregressive and cross-lagged parameters:*
+
+$\alpha = .4$, 
+$\beta = .2$, 
+$\gamma = .2$,
+$\delta = .3$
+
+*Within variances & covariances at wave 1:*
+
+$VAR(WX) = 1$,  
+$VAR(WY) = 1$,  
+$COR(WX,WY) = .3$ 
+
+*Unique variances & covariances at waves 2 & 3:*
+
+The unique variances and covariances were determinded using Kim and Nelson's (1999, p.27) expression of the unconditional covariance matrix of a stationary process as a function of the lagged effects and the residual variance covariance matrix:
+$vec(\Psi) =(I-\Phi\otimes \Phi)vec(\Sigma)$
+
+    
+where $$\Sigma = \begin{bmatrix}
+  \sigma_{w_{X1}} & \sigma_{w_{X1},w_{Y1}} \\
+  \sigma_{w_{X1},w_{Y1}} & \sigma_{w_{Y1}} 
+    \end{bmatrix}$$, 
+    
+and $$\Phi =\begin{bmatrix}
+    \alpha & \gamma \\
+    \beta & \delta 
+\end{bmatrix}$$
+
+
+```{r}
+# simulate data according to Mulder (2022)'s amotivation example
+
+# unique covariance calculation according to Kim & Nelson:
+
+
+Phi <- matrix(c(.4, .2, .2, .3), ncol=2, byrow=F) # Phi matrix alpha, beta, gamma, delta
+
+wSigma <- matrix(c(1, .3, .3, 1), ncol=2, byrow=TRUE) # Matrix of (co-) variances of within components at wave 1  ;  var_wx1, cov_w1, cov_w1, var_wy1
+
+# using Kim & Nelson's (1999, p. 27) formula:
+Psi <- matrix((diag(length(wSigma)) - Phi %x% Phi) %*% c(wSigma), nrow = nrow(Phi))
+
+Psi
+
+
+```
+```{r}
+# compute measurement error variances needed 
+
+# for a measurement error proportion of .3 in X
+(.3*1 + .3*1)/(1 - .3) #  0.8571429
+
+# for a measurement error proportion of .4 in Y
+(.5*1+ .5*1)/(1 - .5) # 2.5
+```
+
+
+```{r}
+
+# generate data 
+
+populationsynt1 <- '
+  
+  ## Create between components (random intercepts)
+  RIx =~ 1*x1 + 1*x2 + 1*x3 
+  RIy =~ 1*y1 + 1*y2 + 1*y3
+  
+  ## Create within-person centered variables
+  wx1 =~ 1*x1
+  wx2 =~ 1*x2
+  wx3 =~ 1*x3 
+  
+  wy1 =~ 1*y1
+  wy2 =~ 1*y2
+  wy3 =~ 1*y3
+
+  ##autogressive effects between the within-person centered variables.
+  
+  ##alpha == 0.4
+  
+  wx2 ~ 0.4*wx1
+  wx3 ~ 0.4*wx2
+  
+  ##delta == 0.3
+  
+  wy2 ~ 0.3*wy1
+  wy3 ~ 0.3*wy2
+  
+  ## cross-lagged effects
+  
+  ##gamma == 0.2
+  
+  wx2 ~ 0.2*wy1
+  wx3 ~ 0.2*wy2
+  
+  ##beta == 0.2
+  
+  wy2 ~ 0.2*wx1
+  wy3 ~ 0.2*wx2
+
+  ## covariance between the within-person centered variables at the first wave
+  wx1 ~~ 0.3*wy1 
+  
+  ## covariances between the residuals of the within-person centered variables (the innovations)
+  
+  ##covu == 0.112
+  wx2 ~~ 0.112*wy2
+  wx3 ~~ 0.112*wy3
+
+  
+  ## variances and covariance of the random intercepts. 
+  
+  ##varRI == 1
+  ##covRI == .5
+  RIx ~~ 1*RIx
+  RIy ~~ 1*RIy
+  RIx ~~ 0.5*RIy
+  
+  ## (residual) variance of the within-person centered variables.
+  
+  wx1 ~~ 1*wx1 # Variances in first wave
+  wy1 ~~ 1*wy1 
+  
+  wx2 ~~  0.752*wx2 # Residual variances
+  wy2 ~~ 0.834*wy2 
+  wx3 ~~  0.752*wx3 
+  wy3 ~~ 0.834*wy3 
+    
+  ## include ME variances
+  
+  ##xx == 0.857
+  x1 ~~ 0.857*x1
+  x2 ~~ 0.857*x2
+  x3 ~~ 0.857*x3
+
+  ##yy == 0.8571429
+  y1 ~~ 0.857*y1
+  y2 ~~ 0.857*y2
+  y3 ~~ 0.857*y3
+'
+
+dataset1 <- simulateData(model=populationsynt1, meanstructure = F,
+                      sample.nobs = 2000)
+cov(dataset1) # check
+
+```
+
+```{r}
+# run sensitivity analysis with sensRICLPM function
+
+exampleresult1 <-sensRICLPM(dataset1, ME_prop_x = c(0, 0.1, 0.2, 0.3, 0.4, 0.5), ME_prop_y = c(0, 0.1, 0.2, 0.3, 0.4, 0.5))
+
+exampleresult1$p2 # get sensitivity plots
+
+```
+
+
+```{r}
+
+# sensitivity analysis table (produces table 1)
+
+restable <- exampleresult1$outputtable %>% filter(admissible== "TRUE"  & MEpropx == MEpropy & parameter %in% c("alpha", "beta", "gamma", "delta", "RIX", "RIY", "RIcov", "wX", "wY", "wcov")) %>% select(MEpropy, parameter, wave, est, cilower, ciupper) # se, pvalue, cilower, ciupper) 
+
+restable <- restable %>% pivot_wider(names_from = MEpropy, values_from = c(est, ciupper, cilower))
+restable$CIa <- paste0("[", round(restable$cilower_0, 3), ", ", round(restable$ciupper_0, 3), "]")
+restable$CIb <- paste0("[", round(restable$cilower_0.1, 3), ", ", round(restable$ciupper_0.1, 3), "]")
+restable$CIc <- paste0("[", round(restable$cilower_0.2, 3), ", ", round(restable$ciupper_0.2, 3), "]")
+restable$CId <- paste0("[", round(restable$cilower_0.3, 3), ", ", round(restable$ciupper_0.3, 3), "]")
+
+restable <- restable %>% select(parameter, wave, est_0, CIa,  est_0.1, CIb, est_0.2, CIc, est_0.3, CId)
+
+restable$est_0 <- round(restable$est_0, 3)
+restable$est_0.1 <- round(restable$est_0.1, 3)
+restable$est_0.2 <- round(restable$est_0.2, 3)
+restable$est_0.3 <- round(restable$est_0.3, 3)
+
+#restable <- restable %>% knitr::kable(booktabs = T, format = "latex")
+
+restable
+```
+```{r}
+saveRDS(restable, "table1.rds")
+```
+
+

@@ -1,0 +1,475 @@
+---
+title: "plots_study1"
+author: "Lina Kramer"
+date: "4/14/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+```{r}
+
+library(tidyr)
+library(dplyr)
+library(purrr)
+library(lavaan)
+library(knitr)
+library(ggplot2)
+library(kableExtra)
+
+set.seed(15)
+```
+
+## Simulation study results
+
+### Reformating
+
+```{r}
+# load rds files containing all simulation results and extract only the relevant tables
+
+study1_fits <- c(readRDS("~/study1fits.v2_n300.rds"),
+                 readRDS("~/study1fits.v2_n1000.rds")) %>%
+  purrr::map(function(i){
+      pluck(i, "outputtable") # extract estimates
+    }) # join results for both sample sizes
+
+# rm(study1fits_n1000, study1fits_n300) # make space
+```
+
+
+```{r}
+# reformat results and extract relevant parts
+
+res_study1 <- data.frame(matrix(nrow=14400))
+res_study1$id <- c(rep(c(1:72, 73:144), each = 100))
+res_study1$rep_id <-1:14400
+
+outputtables<- purrr::map(study1_fits, function(i){
+      pluck(i, "outputtable") # extract estimates
+    })
+
+res_study1$admissible <- purrr::map(outputtables, function(i){
+      pluck(i, "admissible") # extract estimates
+    })
+
+res_study1$MEpropx <- purrr::map(outputtables, function(i){
+      pluck(i, "MEpropx") # extract estimates
+    })
+
+res_study1$MEpropy <- purrr::map(outputtables, function(i){
+      pluck(i, "MEpropy") # extract estimates
+    })
+res_study1$parameters <- purrr::map(outputtables, function(i){
+      pluck(i, "parameter") # extract estimates
+    })
+res_study1$est <- purrr::map(outputtables, function(i){
+      pluck(i, "est") # extract estimates
+    })
+res_study1$se <- purrr::map(outputtables, function(i){
+      pluck(i, "se") # extract estimates
+    })
+res_study1$pvalue <- purrr::map(outputtables, function(i){
+      pluck(i, "pvalue") # extract estimates
+    })
+res_study1$cilower <- purrr::map(outputtables, function(i){
+      pluck(i, "cilower") # extract estimates
+    })
+res_study1$ciupper <- purrr::map(outputtables, function(i){
+      pluck(i, "ciupper") # extract estimates
+    })
+
+res_study1$waves <- purrr::map(outputtables, function(i){
+      pluck(i, "waves") # extract estimates
+    })
+
+
+## Add true values from simulation conditions
+
+simconds_n300 <- simulationconditions %>% subset(sample_size == 300) %>% as_tibble() # the results are in order of the simulation conditions with the conditions in which N = 300 in the first half and the conditions with N= 1000 in the second half
+simconds_n1000 <- simulationconditions %>% subset(sample_size == 1000) %>% as_tibble()
+
+res_study1$MEprop_sample <- c(rep(simconds_n300$ME_prop, 100), rep(simconds_n1000$ME_prop, 100))
+res_study1$crosslagged <- c(rep(simconds_n300$crosslagged, 100), rep(simconds_n1000$crosslagged, 100))
+res_study1$between_var_prop <- c(rep(simconds_n300$between_var_prop, 100), rep(simconds_n1000$between_var_prop, 100))
+res_study1$RI_var <- c(rep(simconds_n300$RI_var, 100), rep(simconds_n1000$RI_var, 100))
+res_study1$within_var <- c(rep(simconds_n300$within_var, 100), rep(simconds_n1000$within_var, 100))
+res_study1$RI_cov <- c(rep(simconds_n300$RI_cov, 100), rep(simconds_n1000$RI_cov,  100))
+res_study1$sample_size <- c(rep(simconds_n300$sample_size, 100), rep(simconds_n1000$sample_size,100))
+res_study1$within_cov <- c(rep(simconds_n300$within_cov, 100), rep(simconds_n1000$within_cov, 100))
+
+
+# ADD TRUE VALUES FOR LAGGED PARAMETERS
+# alpha 
+res_study1$alpha <- .4  
+# delta
+res_study1$delta <- .3
+
+# beta
+res_study1<- res_study1 %>% 
+  mutate(beta = case_when(crosslagged == "beta =.2, gamma = 0" ~ 0.2,
+                   TRUE ~ -0.2))
+
+# gamma
+res_study1 <- res_study1 %>% 
+  mutate(gamma = case_when(crosslagged == "beta =.2, gamma = 0" ~ 0,
+                           crosslagged == "beta =-.2, gamma = .2" ~ 0.2,
+                           crosslagged == "beta =-.2, gamma = -.2" ~ -0.2))
+
+# long format
+l_res_study1 <- res_study1 %>% unnest_longer(col = c(admissible, MEpropx, MEpropy, parameters, est, cilower, ciupper, pvalue, se, waves))
+```
+
+
+```{r}
+
+# get admissibility counts
+counts <- l_res_study1 %>% group_by(MEprop_sample, waves, crosslagged, between_var_prop, sample_size, MEpropx) %>% select(admissible) %>% summarise_each(sum) # 144x4 = 576 counts
+
+counts <- counts%>% mutate(admissible = case_when(waves == 3 ~ admissible/8, waves == 8 ~ admissible/48))
+
+l_res_study1$counts <-ifelse(l_res_study1$waves==counts$waves &
+                                 l_res_study1$MEpropx == counts$MEpropx &
+                                 l_res_study1$MEprop_sample == counts$MEprop_sample &
+                                 l_res_study1$crosslagged == counts$crosslagged &
+                                 l_res_study1$sample_size == counts$sample_size &
+                                 l_res_study1$between_var_prop == counts$between_var_prop,
+                               counts$admissible, 0)
+
+
+```
+
+```{r}
+# checks
+# l_res_study1 %>% filter(admissible == TRUE, is.na(se))
+
+#outputtablet %>% filter(admissible == TRUE, is.na(se))
+```
+
+
+
+```{r}
+
+
+## reformat more
+
+a_l_res_study1 <- l_res_study1 %>% filter(admissible == TRUE) %>% drop_na(se)
+
+
+avparest_study1 <- a_l_res_study1 %>%
+group_by(MEprop_sample, MEpropx, parameters, between_var_prop, crosslagged, waves, sample_size) %>%  summarize(avg_est = mean(est))
+
+
+avparest_study1$MEpropx <- avparest_study1$MEpropx %>% as.numeric()
+avparest_study1$MEprop_sample <- avparest_study1$MEprop_sample %>% as.factor()
+
+```
+
+
+### Figure 6
+
+```{r}
+# barplots 
+
+counts$MEpropx <- counts$MEpropx %>% as.factor()
+counts$MEprop_sample <- counts$MEprop_sample %>% as.factor()
+
+# New facet label names 
+waves.labs <- c("3 waves", " 8 waves")
+names(waves.labs) <- c(3, 8)
+
+between_var_prop.labs <- c("30:70 between:within variance", 
+                           "50:50 between:within variance", 
+                           "70:30 between:within variance")
+names(between_var_prop.labs) <- c(30, 50, 70)
+
+sample_size.labs <- c("N = 300", "N = 1000")
+names(sample_size.labs) <- c(300, 1000)
+
+crosslagged.labs <- c("β = .2, γ = 0", 
+                      "β = -.2, γ = .2",
+                      "β = -.2, γ = -.2")
+names(crosslagged.labs) <- c("beta =.2, gamma = 0", 
+                             "beta =-.2, gamma = .2",
+                             "beta =-.2, gamma = -.2")
+ 
+
+p_ninadmissible <-  counts %>% #filter(between_var_prop == 50) %>%
+  ggplot(aes(x = MEpropx, y = (100-admissible), fill = MEprop_sample))+
+ # ggtitle("Frequencies of inadmissible results (negative variance estimates) for 100 replications")+
+  geom_bar(stat = "identity", position = position_dodge(), )+
+  theme_bw()+
+  scale_fill_brewer(type = "seq", palette = "Greys")+
+  labs(fill = "True proportion of measurement error", 
+       x = "Proportion of measurement error accounted for", 
+       y = "Number of inadmissible results for 100 replications")+
+  theme(legend.position="bottom")+
+  facet_grid(~ between_var_prop +  sample_size ~ waves + crosslagged,
+             labeller = labeller(waves = waves.labs,
+                                 between_var_prop = between_var_prop.labs,
+                                 sample_size = sample_size.labs,
+                                 crosslagged = crosslagged.labs))
+  
+#geom_line(aes(x = as.numeric(MEpropx) + 0.1))+
+ggsave("counts.jpg")
+p_ninadmissible
+```
+
+
+### True value coverage plots: Figures 3b, 4b, 5b
+
+```{r}
+
+# function that indicates coverage of true parameter:
+
+includestruevalue <- function(cilower, ciupper, truevalue){
+  if (cilower >= truevalue && ciupper <= truevalue){
+    i <- TRUE
+  } else{
+    i <- FALSE
+  }
+  return(i)
+}
+
+
+# get lagged
+
+lagged_res <- l_res_study1  %>% distinct(rep_id, parameters, waves, crosslagged, between_var_prop, MEprop_sample, MEpropx, sample_size, .keep_all = TRUE)
+
+a_lagged_res <- lagged_res %>% filter(admissible == "TRUE")%>% drop_na(se)
+
+alphacoverage <- a_lagged_res %>% filter(parameters == "alpha") %>%
+  mutate(cover = if_else((cilower < alpha & ciupper > alpha), T, F))
+
+betacoverage <- a_lagged_res %>% filter(parameters == "beta") %>%
+  mutate(cover = if_else((cilower< beta & ciupper > beta), T, F))
+
+gammacoverage <- a_lagged_res %>% filter(parameters == "gamma") %>%
+  mutate(cover = if_else((cilower< gamma & ciupper > gamma), T, F))
+
+deltacoverage <- a_lagged_res%>% filter(parameters == "delta") %>%
+  mutate(cover = if_else((cilower< delta & ciupper > delta), T, F))
+
+coverages <- rbind(alphacoverage %>% group_by(MEprop_sample, MEpropx, parameters, between_var_prop,
+                                                         crosslagged, waves, sample_size, RI_var)%>%
+  mutate(coverprop = sum(cover)/length(cover)) %>% 
+    distinct(id, coverprop, .keep_all = TRUE),
+  
+                   betacoverage %>% group_by(MEprop_sample, MEpropx, parameters, between_var_prop,
+                                                         crosslagged, waves, sample_size, RI_var)%>%
+  mutate(coverprop = sum(cover)/length(cover)) %>% 
+    distinct(id, coverprop, .keep_all = TRUE),
+                   gammacoverage %>% group_by(MEprop_sample, MEpropx, parameters, between_var_prop,
+                                                         crosslagged, waves, sample_size, RI_var)%>%   mutate(coverprop = sum(cover)/length(cover)) %>% 
+    distinct(id, coverprop, .keep_all = TRUE), # 
+                   deltacoverage %>% group_by(MEprop_sample, MEpropx, parameters, between_var_prop,
+                                                         crosslagged, waves, sample_size, RI_var)%>%   mutate(coverprop = sum(cover)/length(cover)) %>% 
+    distinct(id, coverprop, .keep_all = TRUE))# 
+                   
+
+
+
+
+
+avparest_study1 <- a_lagged_res %>% group_by(MEprop_sample, MEpropx, parameters, between_var_prop,
+                                                         crosslagged, waves, sample_size, RI_var)%>% 
+  summarize(avg_est = mean(est))
+
+
+```
+
+#### Figure 3b
+
+```{r}
+
+coverageplots_a <-  coverages %>% filter(parameters== "alpha") %>%
+  ggplot(aes(x = as.numeric(MEpropx), y = coverprop, linetype = as.factor(MEprop_sample)))+
+ # ggtitle("Frequencies of inadmissible results (negative variance estimates) for 100 replications")+
+  geom_line()+
+  theme_bw()+
+ # scale_fill_brewer(type = "seq", palette = "Greys")+
+  labs(linetype = "True proportion of measurement error", 
+       x = "Proportion of measurement error accounted for", 
+       y = "95 % CI true value coverage rates")+
+  theme(legend.position="bottom")+
+  facet_grid(~ between_var_prop ~  sample_size + waves + crosslagged,
+             labeller = labeller(waves = waves.labs,
+                                 between_var_prop = between_var_prop.labs,
+                                 sample_size = sample_size.labs,
+                                 crosslagged = crosslagged.labs))
+
+coverageplots_a
+```
+
+
+#### Figure 4b
+```{r}
+
+coverageplots_b <-  coverages %>% filter(parameters== "beta", crosslagged == "beta =.2, gamma = 0") %>%
+  ggplot(aes(x = as.numeric(MEpropx), y = coverprop, linetype = as.factor(MEprop_sample)))+
+ # ggtitle("Frequencies of inadmissible results (negative variance estimates) for 100 replications")+
+  geom_line()+
+  theme_bw()+
+ # scale_fill_brewer(type = "seq", palette = "Greys")+
+  labs(linetype = "True proportion of measurement error", 
+       x = "Proportion of measurement error accounted for", 
+       y = "95 % CI true value coverage rates")+
+  theme(legend.position="bottom")+
+  facet_grid(~ between_var_prop ~  sample_size + waves + crosslagged,
+             labeller = labeller(waves = waves.labs,
+                                 between_var_prop = between_var_prop.labs,
+                                 sample_size = sample_size.labs,
+                                 crosslagged = crosslagged.labs))
+
+coverageplots_b
+
+```
+
+#### Figure 5b
+
+```{r}
+
+coverageplots_b2 <-  coverages %>% filter(parameters== "beta", crosslagged == "beta =-.2, gamma = .2" | crosslagged== "beta =-.2, gamma = -.2") %>%
+  ggplot(aes(x = as.numeric(MEpropx), y = coverprop, linetype = as.factor(MEprop_sample)))+
+ # ggtitle("Frequencies of inadmissible results (negative variance estimates) for 100 replications")+
+  geom_line()+
+  theme_bw()+
+ # scale_fill_brewer(type = "seq", palette = "Greys")+
+  labs(linetype = "True proportion of measurement error", 
+       x = "Proportion of measurement error accounted for", 
+       y = "95 % CI true value coverage rates")+
+  theme(legend.position="bottom")+
+  facet_grid(~ between_var_prop ~  sample_size + waves + crosslagged,
+             labeller = labeller(waves = waves.labs,
+                                 between_var_prop = between_var_prop.labs,
+                                 sample_size = sample_size.labs,
+                                 crosslagged = crosslagged.labs))
+
+coverageplots_b2
+
+```
+
+### Average point estimate plots: Figures 3a, 4a, 5a
+
+```{r}
+
+# find end points: 
+data_ends <- counts %>% group_by(MEprop_sample, MEpropx, between_var_prop,
+                                                         crosslagged, waves, sample_size, RI_var) %>% filter(as.numeric(MEpropx) >as.numeric(MEprop_sample))
+
+avparest_study1$MEprop_sample <- as.factor(avparest_study1$MEprop_sample)
+avparest_study1$MEpropx <- as.factor(avparest_study1$MEpropx)
+
+data_ends <- right_join(avparest_study1, data_ends)
+
+data_ends_alpha <- data_ends %>% filter (parameters == "alpha", )
+data_ends_beta<- data_ends %>% filter (parameters == "beta")
+data_ends_gamma <- data_ends %>% filter (parameters == "gamma")
+data_ends_delta <- data_ends %>% filter (parameters == "delta")
+
+library(ggrepel)
+
+avparest_study1$MEpropx <- as.numeric(avparest_study1$MEpropx)
+```
+
+
+```{r}
+
+
+avg_coverages <- coverages %>% group_by(MEprop_sample, MEpropx, parameters, between_var_prop, crosslagged, waves, sample_size, RI_var)%>% summarize(avg_est = mean(est))
+
+```
+
+
+#### Figure 3a
+```{r}
+
+p1 <- avparest_study1 %>% filter(parameters == "alpha") %>% 
+  ggplot(aes(x = as.numeric(paste(MEpropx)), y = avg_est, linetype = as.factor(MEprop_sample)))+ 
+      geom_line(size = 1)+
+      geom_hline(yintercept = .4, size = 1.5, alpha = .3)+
+      labs(linetype = "True proportion of measurement error", 
+       x = "Proportion of measurement error accounted for", 
+       y = "Mean estimate")+
+      theme_bw()+
+      theme(legend.position="bottom")+
+     # ggtitle("Autoregressive parameter alpha")+
+      facet_grid(~ between_var_prop ~  sample_size + waves + crosslagged,
+             labeller = labeller(waves = waves.labs,
+                                 between_var_prop = between_var_prop.labs,
+                                 sample_size = sample_size.labs,
+                                 crosslagged = crosslagged.labs))+
+   geom_text_repel(
+        aes(label = admissible), data = data_ends_alpha,
+        fontface ="plain", color = "black", size = 3,
+        nudge_y = 0.1)
+
+
+p1
+```
+
+
+#### Figure 4a
+
+```{r}
+# cross-lagged
+
+data_ends_beta_1 <- data_ends_beta %>% filter(crosslagged == "beta =.2, gamma = 0")
+
+```
+
+
+```{r}
+p3 <- avparest_study1 %>% filter(parameters == "beta", crosslagged == "beta =.2, gamma = 0")%>%
+  ggplot(aes(x = as.numeric(paste(MEpropx)), y = avg_est, linetype = as.factor(MEprop_sample)))+ 
+      geom_line(size = 1)+
+      geom_hline(yintercept = .2, size = 1.5, alpha = .3)+
+      labs(linetype = "True proportion of measurement error", 
+       x = "Proportion of measurement error accounted for", 
+       y = "Mean estimate")+
+      theme_bw()+
+      theme(legend.position="bottom")+
+    #  ggtitle("Cross-lagged parameter beta")+
+      facet_grid(~ between_var_prop ~  sample_size + waves + crosslagged,
+             labeller = labeller(waves = waves.labs,
+                                 between_var_prop = between_var_prop.labs,
+                                 sample_size = sample_size.labs,
+                                 crosslagged = crosslagged.labs))+
+   geom_text_repel(
+        aes(label = admissible), data = data_ends_beta_1,
+        fontface ="plain", color = "black", size = 3,
+        nudge_y = 0.1)
+```
+
+#### Figure 5a
+
+```{r}
+data_ends_beta_2 <- data_ends_beta %>% filter(crosslagged == "beta =-.2, gamma = .2" | crosslagged== "beta =-.2, gamma = -.2")
+#p3 <-
+```
+
+
+```{r}
+p4 <- avparest_study1 %>% filter(parameters == "beta", crosslagged == "beta =-.2, gamma = .2" | crosslagged== "beta =-.2, gamma = -.2")%>%
+  ggplot(aes(x = as.numeric(paste(MEpropx)), y = avg_est, linetype = as.factor(MEprop_sample)))+ 
+      geom_line(size = 1)+
+      geom_hline(yintercept = -.2, size = 1.5, alpha = .3)+
+      labs(linetype = "True proportion of measurement error", 
+       x = "Proportion of measurement error accounted for", 
+       y = "Mean estimate")+
+      theme_bw()+
+      theme(legend.position="bottom")+
+    #  ggtitle("Cross-lagged parameter beta")+
+      facet_grid(~ between_var_prop ~  sample_size + waves + crosslagged,
+             labeller = labeller(waves = waves.labs,
+                                 between_var_prop = between_var_prop.labs,
+                                 sample_size = sample_size.labs,
+                                 crosslagged = crosslagged.labs))+
+   geom_text_repel(
+        aes(label = admissible), data = data_ends_beta_2,
+        fontface ="plain", color = "black", size = 3,
+        nudge_y = -0.1)
+```
+
