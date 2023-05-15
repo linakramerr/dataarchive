@@ -1,6 +1,5 @@
 
-This repository serves as an archive for the thesis "Sensitivity of the Random Intercept Cross-lagged Panel Model to Unmodeled 
-Measurement Error ". 
+# This repository serves as an archive for the thesis "Sensitivity of the Random Intercept Cross-lagged Panel Model to Unmodeled Measurement Error ". 
 
 FETC case number: 22-1804.
 
