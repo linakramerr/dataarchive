@@ -6,6 +6,8 @@ Ethics / Privacy / Security: Approved by the FETC (case number: 22-1804).
 
 Version: All scripts were run with R version 4.1.1.
 
+License: GPL-2
+
 Contact: l.kramer4@students.uu.nl
 
 This archive is divided into two parts: 
