@@ -27,7 +27,6 @@ This archive is divided into two parts:
 |simulationstudy/Data    |Folder contains an .RDS file with the simulation conditions (produced by data_study1_script.R).|
 |simulationstudy/Scripts |Folder contains: a script to produce data and run the simulation (data_study1_script.R), a script to produce Figures 3, 4, 5, and 6 (plots_script.RMD), a script for for all required functions needed for the simulation study (functions_study1.R), and a script to produce the contents of Table 2 (table_2_contents_script.R). |
 |simulationstudy/Output     |Folder contains Figures 1-6.|
-|thesis.pdf     |A pdf file of the thesis.|
 
 
 
