@@ -2,9 +2,11 @@
 # Archive 
 This repository serves as an archive for the thesis "Sensitivity of the Random Intercept Cross-lagged Panel Model to Unmodeled Measurement Error ". 
 
-FETC case number: 22-1804.
+Ethics / Privacy / Security: Approved by the FETC (case number: 22-1804).
 
-All scripts were run with R version 4.1.1.
+Version: All scripts were run with R version 4.1.1.
+
+Contact: l.kramer4@students.uu.nl
 
 This archive is divided into two parts: 
 
